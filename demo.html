@@ -27,95 +27,107 @@
 
     let plane, rocket, payload;
 
-    console.log("Cesium viewer initialized.");
-
     // Load trajectory JSON
     fetch("trajectory.json")
       .then(res => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         return res.json();
       })
       .then(data => {
-        console.log("Trajectory data loaded successfully:", data);
+        const start = Cesium.JulianDate.fromIso8601(data.plane[0].time);
+        const stop = Cesium.JulianDate.fromIso8601(data.rocket[data.rocket.length - 1].time);
 
-        try {
-          const start = Cesium.JulianDate.fromIso8601(data.plane[0].time);
-          const stop = Cesium.JulianDate.fromIso8601(data.rocket[data.rocket.length - 1].time);
-          console.log("Simulation Start Time:", start.toString());
-          console.log("Simulation Stop Time:", stop.toString());
+        viewer.clock.startTime = start.clone();
+        viewer.clock.stopTime = stop.clone();
+        viewer.clock.currentTime = start.clone();
+        viewer.clock.multiplier = 30; // fast-forward
+        viewer.timeline.zoomTo(start, stop);
 
-          viewer.clock.startTime = start.clone();
-          viewer.clock.stopTime = stop.clone();
-          viewer.clock.currentTime = start.clone();
-          viewer.clock.multiplier = 30; // fast-forward
-          viewer.timeline.zoomTo(start, stop);
+        // Plane entity with glowing path
+        const planePos = new Cesium.SampledPositionProperty();
+        data.plane.forEach(p => {
+          planePos.addSample(Cesium.JulianDate.fromIso8601(p.time), Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
+        });
+        plane = viewer.entities.add({
+          name: "Carrier Plane",
+          position: planePos,
+          orientation: new Cesium.VelocityOrientationProperty(planePos),
+          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumAir/Cesium_Air.glb", scale: 2 },
+          path: {
+            resolution: 1,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.2, taperPower: 1, color: Cesium.Color.YELLOW
+            }),
+            width: 10,
+          },
+          description: "Carrier plane taking off from Indonesia."
+        });
 
-          // Plane entity
-          const planePos = new Cesium.SampledPositionProperty();
-          data.plane.forEach(p => {
-            const time = Cesium.JulianDate.fromIso8601(p.time);
-            const position = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt);
-            planePos.addSample(time, position);
-          });
-          console.log("Plane position samples created.");
+        // Rocket entity with glowing path
+        const rocketPos = new Cesium.SampledPositionProperty();
+        data.rocket.forEach(r => {
+          rocketPos.addSample(Cesium.JulianDate.fromIso8601(r.time), Cesium.Cartesian3.fromDegrees(r.lon, r.lat, r.alt));
+        });
+        rocket = viewer.entities.add({
+          name: "Rocket",
+          position: rocketPos,
+          orientation: new Cesium.VelocityOrientationProperty(rocketPos),
+          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumBalloon/CesiumBalloon.glb", scale: 1.5 },
+          path: {
+            resolution: 1,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.2, taperPower: 1, color: Cesium.Color.ORANGE
+            }),
+            width: 10,
+          },
+          description: "Rocket released from the carrier plane."
+        });
 
-          plane = viewer.entities.add({
-            name: "Carrier Plane",
-            position: planePos,
-            orientation: new Cesium.VelocityOrientationProperty(planePos),
-            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumAir/Cesium_Air.glb", scale: 2 },
-            path: {
-              resolution: 1,
-              material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.2, taperPower: 1, color: Cesium.Color.YELLOW, }),
-              width: 10,
-            },
-            description: "Carrier plane taking off from Indonesia."
-          });
-          console.log("Plane entity created:", plane);
+        // Payload entity with glowing orbit path
+        const payloadPos = new Cesium.SampledPositionProperty();
+        data.payload.track.forEach(p => {
+          payloadPos.addSample(Cesium.JulianDate.fromIso8601(p.time), Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt));
+        });
+        payload = viewer.entities.add({
+          name: "Payload",
+          position: payloadPos,
+          orientation: new Cesium.VelocityOrientationProperty(payloadPos),
+          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
+          path: {
+            resolution: 1,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.2, taperPower: 1, color: Cesium.Color.CYAN
+            }),
+            width: 4,
+          },
+          description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
+        });
 
-          // Rocket entity
-          const rocketPos = new Cesium.SampledPositionProperty();
-          data.rocket.forEach(r => {
-            const time = Cesium.JulianDate.fromIso8601(r.time);
-            const position = Cesium.Cartesian3.fromDegrees(r.lon, r.lat, r.alt);
-            rocketPos.addSample(time, position);
-          });
-          console.log("Rocket position samples created.");
+        // Camera auto-switching
+        viewer.trackedEntity = plane;
+        let currentPhase = "plane";
 
-          rocket = viewer.entities.add({
-            name: "Rocket",
-            position: rocketPos,
-            orientation: new Cesium.VelocityOrientationProperty(rocketPos),
-            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumBalloon/CesiumBalloon.glb", scale: 1.5 },
-            path: {
-              resolution: 1,
-              material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.2, taperPower: 1, color: Cesium.Color.ORANGE, }),
-              width: 10,
-            },
-            description: "Rocket released from the carrier plane."
-          });
-          console.log("Rocket entity created:", rocket);
+        const rocketSeparationTime = Cesium.JulianDate.addSeconds(start, 120, new Cesium.JulianDate()); // +2 min
+        const payloadOrbitTime = Cesium.JulianDate.addSeconds(start, 300, new Cesium.JulianDate()); // +5 min
 
-          // Payload (just a satellite in orbit)
-          payload = viewer.entities.add({
-            name: "Payload",
-            position: Cesium.Cartesian3.fromDegrees(107.5, -5.5, 500000),
-            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
-            description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
-          });
-          console.log("Payload entity created:", payload);
+        viewer.clock.onTick.addEventListener(clock => {
+          const now = clock.currentTime;
 
-          // Camera start
-          viewer.trackedEntity = plane;
-          console.log("Camera tracking plane.");
+          if (Cesium.JulianDate.greaterThanOrEquals(now, rocketSeparationTime) && currentPhase === "plane") {
+            viewer.trackedEntity = rocket;
+            currentPhase = "rocket";
+            console.log("🚀 Camera switched to Rocket");
+          }
 
-        } catch (e) {
-          console.error("Error creating Cesium entities:", e);
-        }
+          if (Cesium.JulianDate.greaterThanOrEquals(now, payloadOrbitTime) && currentPhase === "rocket") {
+            viewer.trackedEntity = payload;
+            currentPhase = "payload";
+            console.log("🛰️ Camera switched to Payload");
+          }
+        });
+
       })
-      .catch(error => console.error("Error loading or processing trajectory data:", error));
+      .catch(error => console.error("Error loading trajectory:", error));
   </script>
 </body>
 </html>
