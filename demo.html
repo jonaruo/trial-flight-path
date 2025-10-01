@@ -11,6 +11,12 @@
 </head>
 <body>
   <div id="cesiumContainer"></div>
+  <div style="position: absolute; top: 10px; left: 10px; z-index: 1;">
+    <button onclick="viewer.trackedEntity = plane;">Track Plane</button>
+    <button onclick="viewer.trackedEntity = rocket;">Track Rocket</button>
+    <button onclick="viewer.trackedEntity = payload;">Track Payload</button>
+    <button onclick="viewer.zoomTo(viewer.entities);">Zoom to All</button>
+  </div>
   <script>
     // Setup Cesium viewer
     Cesium.Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJjY2ZiMGU1Ny03YzU3LTRkZmEtYTRlMC0xN2FmY2JkMjExNGIiLCJpZCI6MzQ2MzExLCJpYXQiOjE3NTkzMjQyODF9.UzpcscNpBpN0nlzyzmV2B2g3ahm1w0STY7vEFgGXPCU";
@@ -19,62 +25,97 @@
       animation: true,
     });
 
+    let plane, rocket, payload;
+
+    console.log("Cesium viewer initialized.");
+
     // Load trajectory JSON
     fetch("trajectory.json")
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
       .then(data => {
-        const start = Cesium.JulianDate.fromIso8601(data.plane[0].time);
-        const stop  = Cesium.JulianDate.fromIso8601(data.rocket.slice(-1)[0].time);
+        console.log("Trajectory data loaded successfully:", data);
 
-        viewer.clock.startTime = start.clone();
-        viewer.clock.stopTime = stop.clone();
-        viewer.clock.currentTime = start.clone();
-        viewer.clock.multiplier = 30; // fast-forward
-        viewer.timeline.zoomTo(start, stop);
+        try {
+          const start = Cesium.JulianDate.fromIso8601(data.plane[0].time);
+          const stop = Cesium.JulianDate.fromIso8601(data.rocket[data.rocket.length - 1].time);
+          console.log("Simulation Start Time:", start.toString());
+          console.log("Simulation Stop Time:", stop.toString());
 
-        // Plane entity
-        const planePos = new Cesium.SampledPositionProperty();
-        data.plane.forEach(p => {
-          planePos.addSample(
-            Cesium.JulianDate.fromIso8601(p.time),
-            Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt)
-          );
-        });
+          viewer.clock.startTime = start.clone();
+          viewer.clock.stopTime = stop.clone();
+          viewer.clock.currentTime = start.clone();
+          viewer.clock.multiplier = 30; // fast-forward
+          viewer.timeline.zoomTo(start, stop);
 
-        const plane = viewer.entities.add({
-          name: "Carrier Plane",
-          position: planePos,
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumAir/Cesium_Air.glb", scale: 2 },
-          path: { show: true, width: 3, material: Cesium.Color.YELLOW }
-        });
+          // Plane entity
+          const planePos = new Cesium.SampledPositionProperty();
+          data.plane.forEach(p => {
+            const time = Cesium.JulianDate.fromIso8601(p.time);
+            const position = Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.alt);
+            planePos.addSample(time, position);
+          });
+          console.log("Plane position samples created.");
 
-        // Rocket entity
-        const rocketPos = new Cesium.SampledPositionProperty();
-        data.rocket.forEach(r => {
-          rocketPos.addSample(
-            Cesium.JulianDate.fromIso8601(r.time),
-            Cesium.Cartesian3.fromDegrees(r.lon, r.lat, r.alt)
-          );
-        });
+          plane = viewer.entities.add({
+            name: "Carrier Plane",
+            position: planePos,
+            orientation: new Cesium.VelocityOrientationProperty(planePos),
+            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumAir/Cesium_Air.glb", scale: 2 },
+            path: {
+              resolution: 1,
+              material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.2, taperPower: 1, color: Cesium.Color.YELLOW, }),
+              width: 10,
+            },
+            description: "Carrier plane taking off from Indonesia."
+          });
+          console.log("Plane entity created:", plane);
 
-        const rocket = viewer.entities.add({
-          name: "Rocket",
-          position: rocketPos,
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumBalloon/CesiumBalloon.glb", scale: 1.5 },
-          path: { show: true, width: 3, material: Cesium.Color.RED }
-        });
+          // Rocket entity
+          const rocketPos = new Cesium.SampledPositionProperty();
+          data.rocket.forEach(r => {
+            const time = Cesium.JulianDate.fromIso8601(r.time);
+            const position = Cesium.Cartesian3.fromDegrees(r.lon, r.lat, r.alt);
+            rocketPos.addSample(time, position);
+          });
+          console.log("Rocket position samples created.");
 
-        // Payload (just a satellite in orbit)
-        const payload = viewer.entities.add({
-          name: "Payload",
-          position: Cesium.Cartesian3.fromDegrees(107.5, -5.5, 500000),
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
-          description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
-        });
+          rocket = viewer.entities.add({
+            name: "Rocket",
+            position: rocketPos,
+            orientation: new Cesium.VelocityOrientationProperty(rocketPos),
+            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumBalloon/CesiumBalloon.glb", scale: 1.5 },
+            path: {
+              resolution: 1,
+              material: new Cesium.PolylineGlowMaterialProperty({ glowPower: 0.2, taperPower: 1, color: Cesium.Color.ORANGE, }),
+              width: 10,
+            },
+            description: "Rocket released from the carrier plane."
+          });
+          console.log("Rocket entity created:", rocket);
 
-        // Camera start
-        viewer.trackedEntity = plane;
-      });
+          // Payload (just a satellite in orbit)
+          payload = viewer.entities.add({
+            name: "Payload",
+            position: Cesium.Cartesian3.fromDegrees(107.5, -5.5, 500000),
+            model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
+            description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
+          });
+          console.log("Payload entity created:", payload);
+
+          // Camera start
+          viewer.trackedEntity = plane;
+          console.log("Camera tracking plane.");
+
+        } catch (e) {
+          console.error("Error creating Cesium entities:", e);
+        }
+      })
+      .catch(error => console.error("Error loading or processing trajectory data:", error));
   </script>
 </body>
 </html>
