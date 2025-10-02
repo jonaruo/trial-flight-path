@@ -59,6 +59,8 @@
               glowPower: 0.2, taperPower: 1, color: Cesium.Color.YELLOW
             }),
             width: 10,
+            leadTime: 0,
+            trailTime: 60,
           },
           description: "Carrier plane taking off from Indonesia."
         });
@@ -79,6 +81,8 @@
               glowPower: 0.2, taperPower: 1, color: Cesium.Color.ORANGE
             }),
             width: 10,
+            leadTime: 0,
+            trailTime: 60,
           },
           description: "Rocket released from the carrier plane."
         });
@@ -95,10 +99,12 @@
           model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
           path: {
             resolution: 1,
-            material: new Cesium.PolylineGlowMaterialProperty({
+            material: new Cesium.SampledPositionProperty({
               glowPower: 0.2, taperPower: 1, color: Cesium.Color.CYAN
             }),
-            width: 4,
+            width: 10,
+            leadTime: 0,
+            trailTime: 60,
           },
           description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
         });

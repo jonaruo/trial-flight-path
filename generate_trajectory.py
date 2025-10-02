@@ -1,27 +1,31 @@
 import json
-from datetime import datetime, timedelta, timezone
 import math
+from datetime import datetime, timedelta, timezone
 
 # --- Constants ---
 CGK_AIRPORT_COORDS = {"lat": -6.12556, "lon": 106.65583}
 ROCKET_RELEASE_ALTITUDE = 10000  # meters
 FLIGHT_DURATION_MINUTES = 5
 RETURN_DURATION_MINUTES = 5
-ROCKET_BOOST_DURATION_MINUTES = 3
-ROCKET_SPLASHDOWN_DURATION_MINUTES = 5
 
-# Payload orbit parameters
+# Rocket parameters
+ROCKET_LAUNCH_ANGLE = math.radians(45)  # launch at 45 degrees
+ROCKET_INITIAL_VELOCITY = 3000  # m/s (demo scale)
+G = 9.81  # gravity
+
+# Orbit parameters (LEO demo)
 EARTH_RADIUS = 6371000  # meters
-apoapsis = 500000  # meters above surface
-periapsis = 500000  # meters above surface
-inclination = math.radians(28.5)
-mu = 3.986004418e14  # Earth’s GM
+ORBIT_ALTITUDE = 500000  # meters
+ORBIT_PERIOD_MINUTES = 90  # typical LEO orbit
+ORBIT_INCLINATION = math.radians(28.5)  # demo inclination
 
 # --- Time Setup ---
 t0 = datetime.now(timezone.utc)
 
 # --- Plane Trajectory ---
 plane_points = []
+
+# 1. Takeoff from CGK and climb to release point
 for i in range(FLIGHT_DURATION_MINUTES + 1):
     point_time = t0 + timedelta(minutes=i)
     plane_points.append({
@@ -34,6 +38,7 @@ for i in range(FLIGHT_DURATION_MINUTES + 1):
 release_point = plane_points[-1]
 release_time = t0 + timedelta(minutes=FLIGHT_DURATION_MINUTES)
 
+# 2. Return to CGK
 for i in range(1, RETURN_DURATION_MINUTES + 1):
     point_time = release_time + timedelta(minutes=i)
     plane_points.append({
@@ -43,54 +48,49 @@ for i in range(1, RETURN_DURATION_MINUTES + 1):
         "alt": release_point["alt"] - i * (release_point["alt"] / RETURN_DURATION_MINUTES)
     })
 
-# --- Rocket Trajectory ---
+# --- Rocket Trajectory (parabolic) ---
 rocket_points = []
-for i in range(ROCKET_BOOST_DURATION_MINUTES + 1):
-    point_time = release_time + timedelta(minutes=i)
-    rocket_points.append({
-        "time": point_time.isoformat(),
-        "lat": release_point["lat"] + i * 0.1,
-        "lon": release_point["lon"] + i * 0.1,
-        "alt": release_point["alt"] + i * 30000
-    })
+rocket_duration_sec = 300  # simulate for 5 minutes
 
-apogee_point = rocket_points[-1]
-apogee_time = release_time + timedelta(minutes=ROCKET_BOOST_DURATION_MINUTES)
+for t in range(0, rocket_duration_sec + 1, 10):  # sample every 10s
+    time = release_time + timedelta(seconds=t)
+    x = ROCKET_INITIAL_VELOCITY * t * math.cos(ROCKET_LAUNCH_ANGLE)
+    y = ROCKET_INITIAL_VELOCITY * t * math.sin(ROCKET_LAUNCH_ANGLE) - 0.5 * G * t**2
+    alt = release_point["alt"] + max(y, 0)
 
-for i in range(1, ROCKET_SPLASHDOWN_DURATION_MINUTES + 1):
-    point_time = apogee_time + timedelta(minutes=i)
+    # project x distance into lat/lon offset (simplified flat Earth)
+    dlat = (x / 111000.0)  # 1 degree ~111 km
+    dlon = (x / (111000.0 * math.cos(math.radians(release_point["lat"]))))
+    
     rocket_points.append({
-        "time": point_time.isoformat(),
-        "lat": apogee_point["lat"] + i * 0.2,
-        "lon": apogee_point["lon"] + i * 0.2,
-        "alt": apogee_point["alt"] - i * (apogee_point["alt"] / ROCKET_SPLASHDOWN_DURATION_MINUTES)
+        "time": time.isoformat(),
+        "lat": release_point["lat"] + dlat,
+        "lon": release_point["lon"] + dlon,
+        "alt": alt
     })
-rocket_points[-1]["alt"] = 0
 
 # --- Payload Orbit ---
 payload_points = []
-a = EARTH_RADIUS + (apoapsis + periapsis) / 2  # semi-major axis
-period = 2 * math.pi * math.sqrt(a**3 / mu)    # orbital period in seconds
-num_samples = 60  # 1 sample per minute
+orbit_period_sec = ORBIT_PERIOD_MINUTES * 60
+num_samples = 180  # 1.5 hours of orbit with 30s step
+
 for i in range(num_samples):
-    t = i * (period / num_samples)
-    point_time = apogee_time + timedelta(seconds=t)
+    t = i * 30  # seconds
+    time = release_time + timedelta(seconds=t)
 
-    # Simple circular orbit approximation
-    mean_anomaly = 2 * math.pi * i / num_samples
-    x = (EARTH_RADIUS + apoapsis) * math.cos(mean_anomaly)
-    y = (EARTH_RADIUS + apoapsis) * math.sin(mean_anomaly)
-    z = (EARTH_RADIUS + apoapsis) * math.sin(inclination) * math.sin(mean_anomaly)
+    # Angular velocity
+    theta = 2 * math.pi * (t / orbit_period_sec)
 
-    # Convert rough orbital coords to lat/lon/alt
-    lon = math.degrees(math.atan2(y, x))
-    lat = math.degrees(math.atan2(z, math.sqrt(x**2 + y**2)))
-    alt = math.sqrt(x**2 + y**2 + z**2) - EARTH_RADIUS
+    # Orbital coordinates (simplified circular orbit)
+    r = EARTH_RADIUS + ORBIT_ALTITUDE
+    lat = ORBIT_INCLINATION * math.sin(theta)  # vary with inclination
+    lon = (release_point["lon"] + math.degrees(theta)) % 360
+    alt = ORBIT_ALTITUDE
 
     payload_points.append({
-        "time": point_time.isoformat(),
-        "lat": lat,
-        "lon": lon,
+        "time": time.isoformat(),
+        "lat": float(lat),
+        "lon": float(lon),
         "alt": alt
     })
 
@@ -104,4 +104,4 @@ data = {
 with open("trajectory.json", "w") as f:
     json.dump(data, f, indent=2)
 
-print("trajectory.json generated with plane, rocket, and satellite orbit.")
+print("trajectory.json generated with parabolic rocket and orbital payload.")
