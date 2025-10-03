@@ -40,7 +40,7 @@
         viewer.clock.startTime = start.clone();
         viewer.clock.stopTime = stop.clone();
         viewer.clock.currentTime = start.clone();
-        viewer.clock.multiplier = 30; // fast-forward
+        viewer.clock.multiplier = 10; // fast-forward
         viewer.timeline.zoomTo(start, stop);
 
         // Plane entity with glowing path
@@ -52,7 +52,7 @@
           name: "Carrier Plane",
           position: planePos,
           orientation: new Cesium.VelocityOrientationProperty(planePos),
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumAir/Cesium_Air.glb", scale: 2 },
+          model: { uri: "models/f_16_c.glb", scale: 0.2 },
           path: {
             resolution: 1,
             material: new Cesium.PolylineGlowMaterialProperty({
@@ -60,7 +60,7 @@
             }),
             width: 10,
             leadTime: 0,
-            trailTime: 60,
+            trailTime: 120,
           },
           description: "Carrier plane taking off from Indonesia."
         });
@@ -74,7 +74,7 @@
           name: "Rocket",
           position: rocketPos,
           orientation: new Cesium.VelocityOrientationProperty(rocketPos),
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumBalloon/CesiumBalloon.glb", scale: 1.5 },
+          model: { uri: "models/rocket.glb", scale: 10 },
           path: {
             resolution: 1,
             material: new Cesium.PolylineGlowMaterialProperty({
@@ -82,7 +82,7 @@
             }),
             width: 10,
             leadTime: 0,
-            trailTime: 60,
+            trailTime: 120,
           },
           description: "Rocket released from the carrier plane."
         });
@@ -96,10 +96,10 @@
           name: "Payload",
           position: payloadPos,
           orientation: new Cesium.VelocityOrientationProperty(payloadPos),
-          model: { uri: "https://cesium.com/downloads/cesiumjs/releases/1.118/Apps/SampleData/models/CesiumMan/Cesium_Man.glb", scale: 5000 },
+          model: { uri: "models/payload.glb", scale: 1 },
           path: {
             resolution: 1,
-            material: new Cesium.SampledPositionProperty({
+            material: new Cesium.PolylineGlowMaterialProperty({
               glowPower: 0.2, taperPower: 1, color: Cesium.Color.CYAN
             }),
             width: 10,
@@ -109,23 +109,26 @@
           description: `Orbit: 500km circular, Inclination: ${data.payload.orbit.inclination}°`
         });
 
-        // Camera auto-switching
+        // Camera auto-switching based on trajectory events
         viewer.trackedEntity = plane;
         let currentPhase = "plane";
 
-        const rocketSeparationTime = Cesium.JulianDate.addSeconds(start, 120, new Cesium.JulianDate()); // +2 min
-        const payloadOrbitTime = Cesium.JulianDate.addSeconds(start, 300, new Cesium.JulianDate()); // +5 min
+        // Get the actual start times from the data
+        const rocketSeparationTime = Cesium.JulianDate.fromIso8601(data.rocket[0].time);
+        const payloadOrbitTime = Cesium.JulianDate.fromIso8601(data.payload.track[0].time);
 
         viewer.clock.onTick.addEventListener(clock => {
           const now = clock.currentTime;
 
-          if (Cesium.JulianDate.greaterThanOrEquals(now, rocketSeparationTime) && currentPhase === "plane") {
+          // Switch to rocket at its separation time
+          if (currentPhase === "plane" && Cesium.JulianDate.greaterThanOrEquals(now, rocketSeparationTime)) {
             viewer.trackedEntity = rocket;
             currentPhase = "rocket";
             console.log("🚀 Camera switched to Rocket");
           }
 
-          if (Cesium.JulianDate.greaterThanOrEquals(now, payloadOrbitTime) && currentPhase === "rocket") {
+          // Switch to payload at its orbit insertion time
+          if (currentPhase === "rocket" && Cesium.JulianDate.greaterThanOrEquals(now, payloadOrbitTime)) {
             viewer.trackedEntity = payload;
             currentPhase = "payload";
             console.log("🛰️ Camera switched to Payload");
