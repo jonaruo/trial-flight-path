@@ -10,7 +10,7 @@ RETURN_DURATION_MINUTES = 5
 
 # Rocket parameters
 ROCKET_LAUNCH_ANGLE = math.radians(25)  # steep launch
-ROCKET_INITIAL_VELOCITY = 5000  # m/s
+ROCKET_INITIAL_VELOCITY = 4800  # m/s
 G = 9.81  # gravity
 ROCKET_ALTITUDE_CEILING = 200000  # meters (200 km)
 
